@@ -3,7 +3,7 @@
 
 import { Upload, X } from "lucide-react";
 import Image from "next/image";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 
 interface ImageUploaderProps {
   id: number;
@@ -20,10 +20,20 @@ export default function ImageUploader({
   onRemove,
   label,
 }: ImageUploaderProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       onUpload(id, e.target.files[0]);
     }
+  };
+
+  const handleRemove = () => {
+    // Reset the file input value so you can select the same file again
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+    onRemove(id);
   };
 
   return (
@@ -57,6 +67,7 @@ export default function ImageUploader({
           </div>
         )}
         <input
+          ref={inputRef}
           type="file"
           className="hidden"
           accept="image/*"
@@ -68,7 +79,7 @@ export default function ImageUploader({
       {/* Nút xóa ảnh */}
       {image && (
         <button
-          onClick={() => onRemove(id)}
+          onClick={handleRemove}
           className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-md hover:bg-red-600 transition-colors"
         >
           <X size={16} />

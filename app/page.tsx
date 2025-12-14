@@ -20,30 +20,57 @@ export default function Home() {
     null,
     null,
   ]);
+  const [imageFiles, setImageFiles] = useState<(File | null)[]>([
+    null,
+    null,
+    null,
+    null,
+  ]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasResult, setHasResult] = useState(false);
+  const [stlUrl, setStlUrl] = useState<string>("/models/sample_output.STL");
+  const [error, setError] = useState<string | null>(null);
 
   // Form state
   const [patientName, setPatientName] = useState("");
   const [patientId, setPatientId] = useState("");
 
   const handleUpload = (index: number, file: File) => {
+    // Revoke previous blob URL at this index to avoid memory leaks
+    const prevUrl = images[index];
+    if (prevUrl && prevUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(prevUrl);
+    }
     const objectUrl = URL.createObjectURL(file);
     const newImages = [...images];
     newImages[index] = objectUrl;
     setImages(newImages);
+
+    const newFiles = [...imageFiles];
+    newFiles[index] = file;
+    setImageFiles(newFiles);
   };
 
   const handleRemove = (index: number) => {
     setImages((prev) => {
       const newImgs = [...prev];
+      const prevUrl = newImgs[index];
+      if (prevUrl && prevUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(prevUrl);
+      }
       newImgs[index] = null;
       return newImgs;
     });
+    setImageFiles((prev) => {
+      const newFiles = [...prev];
+      newFiles[index] = null;
+      return newFiles;
+    });
     setHasResult(false);
+    setError(null);
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (images.some((img) => img === null)) {
       alert("Vui lòng upload đủ 4 góc nhìn!");
       return;
@@ -54,10 +81,45 @@ export default function Home() {
     }
 
     setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
+    setError(null);
+
+    try {
+      // Create FormData with the uploaded files
+      const formData = new FormData();
+      imageFiles.forEach((file, index) => {
+        if (file) {
+          formData.append("files", file);
+        }
+      });
+
+      // Call the local API route (which proxies to the external API)
+      const response = await fetch("/api/predict", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.statusText}`);
+      }
+
+      // Get the STL file as a blob
+      const blob = await response.blob();
+
+      // Create a URL for the blob
+      const stlBlobUrl = URL.createObjectURL(blob);
+      setStlUrl(stlBlobUrl);
+
       setHasResult(true);
-    }, 3000);
+    } catch (err) {
+      console.error("Error generating 3D model:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Đã xảy ra lỗi khi xử lý. Vui lòng thử lại."
+      );
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const inputLabels = [
@@ -78,7 +140,7 @@ export default function Home() {
         <header className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-2xl font-bold text-gray-800">
-              Tái tạo 3D Nha khoa
+              Tái tạo ảnh 3D nha khoa
             </h1>
             <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
               <span>Trang chủ</span>
@@ -194,6 +256,19 @@ export default function Home() {
                 </p>
               </div>
 
+              {/* Error Alert */}
+              {error && (
+                <div className="bg-red-50 border border-red-100 rounded-lg p-3 flex gap-3 items-start mb-6">
+                  <AlertCircle
+                    size={18}
+                    className="text-red-600 shrink-0 mt-0.5"
+                  />
+                  <p className="text-xs text-red-700 leading-relaxed">
+                    {error}
+                  </p>
+                </div>
+              )}
+
               <button
                 onClick={handleGenerate}
                 disabled={isProcessing}
@@ -234,7 +309,7 @@ export default function Home() {
                 <ModelViewer
                   isProcessing={isProcessing}
                   hasResult={hasResult}
-                  STLurl="/models/sample_output.STL"
+                  STLurl={stlUrl}
                 />
               </div>
             </div>
